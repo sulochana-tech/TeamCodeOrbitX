@@ -10,7 +10,28 @@ export default function IssueCard({ issue }) {
   const [loading, setLoading] = useState(false);
   const { isAuthenticated } = useAuth();
 
-  // Fetch upvote status when component mounts (works for both authenticated and anonymous users)
+  // Status configuration
+  const statusConfig = {
+    pending: { 
+      color: "bg-orange-100 text-orange-800 border-orange-200",
+      label: "Under Review", 
+      icon: "🕒" 
+    },
+    "in-progress": { 
+      color: "bg-blue-100 text-blue-800 border-blue-200",
+      label: "In Progress", 
+      icon: "🚧" 
+    },
+    resolved: { 
+      color: "bg-green-100 text-green-800 border-green-200",
+      label: "Resolved", 
+      icon: "✅" 
+    }
+  };
+
+  const status = statusConfig[issue.status] || statusConfig.pending;
+
+  // Fetch upvote status when component mounts
   useEffect(() => {
     const fetchUpvoteStatus = async () => {
       try {
@@ -28,8 +49,7 @@ export default function IssueCard({ issue }) {
   }, [issue._id]);
 
   const handleToggleUpvote = async (e) => {
-    e.preventDefault(); // Prevent navigation to details page
-
+    e.preventDefault();
     setLoading(true);
     try {
       const sessionId = getSessionId();
@@ -47,48 +67,88 @@ export default function IssueCard({ issue }) {
     }
   };
 
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-md hover:shadow-xl transition p-4">
-      <Link to={`/issue/${issue._id}`}>
-        <img
-          src={issue.image}
-          className="w-full h-56 object-cover rounded-lg mb-3"
-          alt={issue.category}
-        />
-
-        <h2 className="text-xl font-bold text-red-700">{issue.category}</h2>
-        <p className="text-gray-700 line-clamp-2">{issue.description}</p>
-
-        <div className="flex items-center justify-between mt-3">
-          <div className="flex items-center gap-2">
-            <p className="text-sm text-blue-800">
-              Status: <b className="capitalize">{issue.status}</b>
-            </p>
-            {issue.status === "resolved" && (
-              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
-                ✅ Resolved
-              </span>
-            )}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-all duration-300 overflow-hidden h-full flex flex-col">
+      {/* Image Section */}
+      <Link to={`/issue/${issue._id}`} className="block flex-shrink-0">
+        <div className="relative">
+          <img
+            src={issue.image}
+            className="w-full h-48 object-cover"
+            alt={issue.category}
+          />
+          <div className="absolute top-3 right-3">
+            <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${status.color}`}>
+              {status.icon} {status.label}
+            </span>
           </div>
-          <p className="text-xs text-gray-500">{issue.locationName}</p>
         </div>
       </Link>
 
-      {/* Upvote Button */}
-      <div className="mt-3 pt-3 border-t border-gray-200">
-        <button
-          onClick={handleToggleUpvote}
-          disabled={loading}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
-            upvoted
-              ? "bg-red-600 text-white hover:bg-red-700"
-              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-          } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-        >
-          <span className="text-xl">{upvoted ? "❤️" : "🤍"}</span>
-          <span>{upvoteCount}</span>
-          <span>{upvoted ? "Liked" : "Like"}</span>
-        </button>
+      {/* Content Section */}
+      <div className="p-6 flex-grow flex flex-col">
+        <Link to={`/issue/${issue._id}`} className="flex-grow block">
+          {/* Category and Date */}
+          <div className="flex items-start justify-between mb-3">
+            <h2 className="text-xl font-bold text-gray-900 capitalize leading-tight flex-1 pr-2">
+              {issue.category}
+            </h2>
+            <span className="text-sm text-gray-500 whitespace-nowrap flex-shrink-0">
+              {formatDate(issue.createdAt)}
+            </span>
+          </div>
+
+          {/* Description */}
+          <p className="text-gray-700 line-clamp-3 leading-relaxed mb-4">
+            {issue.description}
+          </p>
+
+          {/* Location */}
+          <div className="flex items-center text-sm text-gray-600">
+            <span className="mr-2">📍</span>
+            <span className="truncate">{issue.locationName}</span>
+          </div>
+        </Link>
+
+        {/* Action Section */}
+        <div className="mt-auto pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              onClick={handleToggleUpvote}
+              disabled={loading}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg font-semibold transition-all flex-shrink-0 ${
+                upvoted
+                  ? "bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                  : "bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100"
+              } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+            >
+              <span className={`text-lg ${upvoted ? "text-red-500" : "text-gray-400"}`}>
+                {upvoted ? "❤️" : "🤍"}
+              </span>
+              <span className="font-medium min-w-[20px] text-center">
+                {upvoteCount}
+              </span>
+              <span className="text-sm whitespace-nowrap hidden sm:inline">
+                {upvoted ? "Supported" : "Support"}
+              </span>
+            </button>
+
+            <Link 
+              to={`/issue/${issue._id}`}
+              className="px-5 py-2.5 bg-gray-900 text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors text-sm whitespace-nowrap flex-shrink-0 text-center"
+            >
+              View Details
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

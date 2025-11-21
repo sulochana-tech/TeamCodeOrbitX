@@ -34,22 +34,46 @@ export const createIssue = async (req, res) => {
       uploadedImage = upload.secure_url;
     }
 
-    // Duplicate Detection
-    const isDuplicate = await detectDuplicateIssue(lat, lng, uploadedImage);
-    if (isDuplicate) {
-      return res.status(400).json({
-        message: "Duplicate issue detected in this location",
-      });
+    // Duplicate Detection - Optional, only if user wants it
+    // For now, we'll skip automatic duplicate detection to avoid blocking submissions
+    // You can enable this later if needed
+    // const isDuplicate = await detectDuplicateIssue(lat, lng, uploadedImage);
+    // if (isDuplicate) {
+    //   return res.status(400).json({
+    //     message: "Duplicate issue detected in this location",
+    //   });
+    // }
+
+    // AI Category - Only use if category is not provided by user
+    // Don't auto-process, let user choose or use AI button
+    if (!category || category.trim() === "") {
+      // Only auto-detect if no category selected
+      if (uploadedImage) {
+        try {
+          category = await analyzeImageCategory(uploadedImage);
+        } catch (error) {
+          console.error("Error auto-detecting category:", error);
+          category = "Other"; // Fallback
+        }
+      } else {
+        category = "Other"; // Default if no image
+      }
     }
 
-    // AI Category
-    if (!category) {
-      category = await analyzeImageCategory(uploadedImage);
-    }
-
-    // AI Description
-    if (!description || description.trim().length < 5) {
-      description = await generateDescriptionAI(uploadedImage);
+    // AI Description - Only use if description is too short or empty
+    // Don't auto-generate unless user hasn't provided enough info
+    if (!description || description.trim().length < 10) {
+      // Only auto-generate if description is very short
+      if (uploadedImage) {
+        try {
+          description = await generateDescriptionAI(uploadedImage);
+        } catch (error) {
+          console.error("Error auto-generating description:", error);
+          description = description || "Issue reported. Please see image for details.";
+        }
+      } else {
+        description = description || "Issue reported. Please provide more details.";
+      }
     }
 
     // Save Issue
