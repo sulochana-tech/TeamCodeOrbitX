@@ -75,6 +75,13 @@ export default function ReportIssue() {
     setupAutoSync(syncFunction);
   }, []);
 
+  // Debug: Log when coordinates change
+  useEffect(() => {
+    if (lat && lng) {
+      console.log(`📍 State updated - Lat: ${lat}, Lng: ${lng}`);
+    }
+  }, [lat, lng]);
+
   const handleTemplateSelect = (template) => {
     setSelectedCategory(template.category);
     setDescription(template.description);
@@ -203,46 +210,196 @@ export default function ReportIssue() {
     }
   };
 
-  const getCurrentLocationDirect = () => {
+  const getCurrentLocationDirect = (e) => {
+    // Prevent any form submission
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    console.log("📍 === GET CURRENT LOCATION START ===");
+    console.log("✅ Button clicked! Function called successfully.");
+    console.log("Navigator object:", typeof navigator !== 'undefined' ? 'EXISTS' : 'MISSING');
+    console.log("Geolocation API:", navigator?.geolocation ? 'AVAILABLE' : 'NOT AVAILABLE');
+    
+    // Immediate visual feedback - show loading state
     setGettingLocation(true);
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          setLat(latitude);
-          setLng(longitude);
-          setGettingLocation(false);
+    info("Requesting your location... Please allow location access if prompted.");
+    
+    // Check if geolocation is supported
+    if (!navigator) {
+      console.error("❌ Navigator object not available");
+      error("Browser does not support geolocation. Please use the map to select your location.");
+      setGettingLocation(false);
+      return;
+    }
 
+    if (!navigator.geolocation) {
+      console.error("❌ Geolocation API not available in navigator");
+      error("Geolocation is not supported in this browser. Please use the map to select your location.");
+      setGettingLocation(false);
+      return;
+    }
+
+    console.log("✅ Geolocation API available");
+    console.log("Requesting position...");
+    
+    // Simplified options - start with less strict requirements
+    const geoOptions = {
+      enableHighAccuracy: false, // Start with less strict accuracy
+      timeout: 30000, // 30 second timeout - longer
+      maximumAge: 60000, // Accept cached position up to 1 minute
+    };
+
+    console.log("📍 Requesting position with options:", geoOptions);
+    
+    navigator.geolocation.getCurrentPosition(
+      // Success callback
+      (position) => {
+        console.log("✅ SUCCESS! Position received:", position);
+        
+        try {
+          const { latitude, longitude, accuracy } = position.coords;
+          console.log(`📍 Raw coordinates: ${latitude}, ${longitude}`);
+          console.log(`📍 Accuracy: ${accuracy} meters`);
+          
+          // Validate coordinates are valid numbers
+          if (latitude === null || longitude === null || 
+              latitude === undefined || longitude === undefined ||
+              isNaN(latitude) || isNaN(longitude)) {
+            throw new Error("Invalid coordinates received");
+          }
+          
+          // Validate coordinate ranges
+          if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            throw new Error(`Coordinates out of range: ${latitude}, ${longitude}`);
+          }
+
+          // Format coordinates to 6 decimal places (~10cm precision)
+          const finalLat = parseFloat(latitude.toFixed(6));
+          const finalLng = parseFloat(longitude.toFixed(6));
+
+          console.log(`📍 Final coordinates: ${finalLat}, ${finalLng}`);
+
+          // IMPORTANT: Update state immediately
+          setLat(String(finalLat));
+          setLng(String(finalLng));
+          
+          // Set a default location name if geocoding fails
+          setLocationName(`GPS Location: ${finalLat}, ${finalLng}`);
+          
+          console.log("✅ State updated with coordinates");
+          
+          // Show success message
+          success(`Location retrieved successfully! Accuracy: ${Math.round(accuracy || 0)}m`);
+          
+          // Automatically show map
+          if (!showMap) {
+            setShowMap(true);
+          }
+          
+          // Try reverse geocoding (don't block on this)
+          console.log("📍 Starting reverse geocoding...");
           fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+            `https://nominatim.openstreetmap.org/reverse?lat=${finalLat}&lon=${finalLng}&format=json&addressdetails=1&zoom=18`,
+            {
+              method: 'GET',
+              headers: {
+                'User-Agent': 'RupandehiDistrictApp/1.0',
+                'Accept': 'application/json',
+              },
+            }
           )
-            .then((res) => res.json())
+            .then((response) => {
+              console.log("📍 Geocoding response status:", response.status);
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+              }
+              return response.json();
+            })
             .then((data) => {
-              if (data.display_name) {
+              console.log("📍 Geocoding data received:", data);
+              
+              if (data && data.display_name) {
                 setLocationName(data.display_name);
+                info(`Location: ${data.display_name.substring(0, 80)}${data.display_name.length > 80 ? '...' : ''}`);
+              } else if (data && data.address) {
+                const addr = data.address;
+                const parts = [];
+                if (addr.road) parts.push(addr.road);
+                if (addr.village || addr.town || addr.city || addr.hamlet) {
+                  parts.push(addr.village || addr.town || addr.city || addr.hamlet);
+                }
+                if (addr.municipality || addr.county) {
+                  parts.push(addr.municipality || addr.county);
+                }
+                const locationStr = parts.length > 0 
+                  ? parts.join(", ")
+                  : `GPS: ${finalLat}, ${finalLng}`;
+                setLocationName(locationStr);
               }
             })
-            .catch((err) => console.error("Geocoding error:", err));
-
-          setShowMap(true);
-        },
-        (err) => {
-          console.error("Error getting location:", err);
-          error(
-            "Unable to retrieve your location. Please ensure location services are enabled in your browser settings."
-          );
+            .catch((geocodeErr) => {
+              console.warn("⚠️ Geocoding failed (non-critical):", geocodeErr);
+              // Keep the default location name we set earlier
+            })
+            .finally(() => {
+              setGettingLocation(false);
+              console.log("✅ === GET CURRENT LOCATION COMPLETE ===");
+            });
+            
+        } catch (processingError) {
+          console.error("❌ Error processing location:", processingError);
+          error(`Failed to process location: ${processingError.message}`);
           setGettingLocation(false);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
         }
-      );
-    } else {
-      error("Geolocation services are not supported by your browser");
-      setGettingLocation(false);
-    }
+      },
+      // Error callback
+      (geolocationError) => {
+        console.error("❌ Geolocation ERROR:", geolocationError);
+        console.error("Error code:", geolocationError.code);
+        console.error("Error message:", geolocationError.message);
+        console.error("Full error object:", JSON.stringify(geolocationError, null, 2));
+        
+        let userMessage = "❌ Failed to get your location: ";
+        let detailedMessage = "";
+        
+        // Use numeric codes directly for switch
+        const errorCode = geolocationError.code;
+        
+        switch (errorCode) {
+          case 1: // PERMISSION_DENIED
+          case geolocationError.PERMISSION_DENIED:
+            userMessage = "🔒 Location permission denied!";
+            detailedMessage = "Please allow location access in your browser settings:\n\n1. Click the lock/security icon in your browser's address bar\n2. Find 'Location' or 'Permissions'\n3. Change from 'Block' to 'Allow'\n4. Refresh the page and try again.";
+            console.error("❌ PERMISSION_DENIED (Code 1)");
+            break;
+          case 2: // POSITION_UNAVAILABLE
+          case geolocationError.POSITION_UNAVAILABLE:
+            userMessage = "📍 Location unavailable!";
+            detailedMessage = "Your device cannot determine your location. Please:\n\n1. Check if GPS/location services are enabled on your device\n2. Make sure you're in an area with GPS signal\n3. Try moving to a different location";
+            console.error("❌ POSITION_UNAVAILABLE (Code 2)");
+            break;
+          case 3: // TIMEOUT
+          case geolocationError.TIMEOUT:
+            userMessage = "⏱️ Location request timed out!";
+            detailedMessage = "The location request took too long. Please:\n\n1. Check your internet connection\n2. Ensure GPS is enabled\n3. Try again";
+            console.error("❌ TIMEOUT (Code 3)");
+            break;
+          default:
+            userMessage = `⚠️ Location error: ${errorCode || 'Unknown'}`;
+            detailedMessage = geolocationError.message || "An unknown error occurred. Please try using the map to select your location manually.";
+            console.error("❌ Unknown error code:", errorCode);
+            break;
+        }
+        
+        error(userMessage);
+        warning(detailedMessage || "You can still select your location manually on the map below.");
+        setGettingLocation(false);
+        console.log("✅ Error handling complete");
+      },
+      geoOptions
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -967,18 +1124,35 @@ export default function ReportIssue() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={getCurrentLocationDirect}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log("🔘 GPS Button clicked!");
+                          getCurrentLocationDirect(e);
+                        }}
                         disabled={gettingLocation}
-                        className="p-4 border-2 border-gray-300 rounded hover:border-[#003865] hover:bg-gray-50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-gray-300 disabled:hover:bg-transparent"
+                        className={`p-4 border-2 rounded transition-colors text-left ${
+                          gettingLocation
+                            ? "border-[#003865] bg-blue-50 cursor-wait"
+                            : lat && lng
+                            ? "border-green-500 bg-green-50 hover:border-green-600 hover:bg-green-100"
+                            : "border-gray-300 hover:border-[#003865] hover:bg-gray-50"
+                        } disabled:opacity-70 disabled:cursor-not-allowed`}
                       >
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-12 h-12 rounded flex items-center justify-center ${
-                              gettingLocation ? "bg-[#003865]" : "bg-gray-200"
+                            className={`w-12 h-12 rounded flex items-center justify-center transition-colors ${
+                              gettingLocation
+                                ? "bg-[#003865]"
+                                : lat && lng
+                                ? "bg-green-600"
+                                : "bg-gray-200"
                             }`}
                           >
                             {gettingLocation ? (
                               <Loader2 className="w-6 h-6 text-white animate-spin" />
+                            ) : lat && lng ? (
+                              <CheckCircle className="w-6 h-6 text-white" />
                             ) : (
                               <Navigation className="w-6 h-6 text-[#003865]" />
                             )}
@@ -989,9 +1163,16 @@ export default function ReportIssue() {
                             </h3>
                             <p className="text-xs text-gray-600">
                               {gettingLocation
-                                ? "Getting your location..."
-                                : "Use device GPS for precise coordinates"}
+                                ? "Requesting location permission..."
+                                : lat && lng
+                                ? "Location retrieved! Click to update"
+                                : "Click to use device GPS for precise coordinates"}
                             </p>
+                            {lat && lng && !gettingLocation && (
+                              <p className="text-xs text-green-700 mt-1 font-medium">
+                                ✓ Lat: {parseFloat(lat).toFixed(6)}, Lng: {parseFloat(lng).toFixed(6)}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </button>
