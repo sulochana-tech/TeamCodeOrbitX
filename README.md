@@ -421,11 +421,24 @@ Language can be switched from the user interface.
 
 This project is licensed under the MIT License.
 
-## 👥 Team
+## 👥 Team 
 
 **TeamCodeOrbitX**
 
 - Provincial Phase - Rupandehi
+
+## 👥 Team members
+
+| Name               | Role                |
+|--------------------|---------------------|
+| Bigam Pachhai      | Full Stack Developer|
+| Sulochana Pokhrel  | Frontend Dveloper   |
+| Razeev Gurung      | Frontend  Developer |
+| Ranjit Gyawali     | UI/UX  Designer     |
+
+
+---
+
 
 ## 📞 Support
 
